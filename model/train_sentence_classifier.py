@@ -1,11 +1,14 @@
 import os
 from transformers import AutoTokenizer, AutoModelForMaskedLM
-os.sys.path.extend(['D:\\a_github项目\\ASSORT-Automatic-Summarization-of-Stack-Overflow-Posts-main\\model'])
+
+os.sys.path.extend(['D://a_github项目//ASSORT-Automatic-Summarization-of-Stack-Overflow-Posts-main//model'])
 from transformers import AutoModel, AutoTokenizer
 import nltk
 from nltk.corpus import state_union
 from nltk.tokenize import PunktSentenceTokenizer
-from classification_head import *
+
+import bert_fintuned
+import torch
 
 
 def entity_overlap(sentence, tags, question_title):
@@ -86,9 +89,9 @@ def explicit_features(i, index, tags, question_title):
 import pandas as pd
 from ast import literal_eval
 
-# 注意，old_seentence.csv没有这个文件
+# 注意，old_sentence.csv没有这个文件
 
-#old_sentences = pd.read_csv("old_sentences.csv")
+# old_sentences = pd.read_csv("old_sentences.csv")
 import numpy as np
 from tqdm import trange
 
@@ -96,52 +99,43 @@ from tqdm import trange
 # 获得bertOverflow生产的向量
 def get_representation(df, tokenizer, model):
     device = torch.device('cuda:0')
-    model=model.to(device)
     explicit_features_for_df = np.empty((0, 28), dtype=float, order='C')
+    result = np.array([])
     for index, i in enumerate(df.sentence):
+        di = dict()
         position = df.position[index]
         tags = df.tags[index]
         question_title = df.question_title[index]
-        explicit_features_for_df = np.append(explicit_features_for_df,
-                                             np.array(explicit_features(i, position, tags, question_title)))
-    explicit_features_for_df = explicit_features_for_df.reshape(-1, 28)
-
-    sentence_bert_for_df = np.empty((0, 768), dtype=float, order='C')
-
-    for i in trange(len(df.sentence)):
-        i = df.sentence[i]
-        encoded_input = tokenizer(i, return_tensors='pt').to(device)
-        output = model(**encoded_input)
-        sentence_bert_for_df = np.append(sentence_bert_for_df, output['pooler_output'].cpu().detach().numpy(), axis=0)
-
-    return np.concatenate((sentence_bert_for_df, explicit_features_for_df), axis=1)
+        explicit_features_for_df = np.array(explicit_features(i, position, tags, question_title))
+        encoded_input = tokenizer(i, return_tensors='pt')
+        di['explicit_feature'] = explicit_features_for_df
+        di['encoded_input']=encoded_input
+        result=np.append(result,di)
+    return result
 
 
 # BERTOverflow
 
-#boverflow_tokenizer = AutoTokenizer.from_pretrained("jeniya/BERTOverflow")
-#boverflow_model = AutoModel.from_pretrained("jeniya/BERTOverflow")
+# boverflow_tokenizer = AutoTokenizer.from_pretrained("jeniya/BERTOverflow")
+# boverflow_model = AutoModel.from_pretrained("jeniya/BERTOverflow")
 boverflow_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 boverflow_model = AutoModel.from_pretrained("bert-base-uncased")
-dataset = pd.read_csv("D://a_github项目//ASSORT-Automatic-Summarization-of-Stack-Overflow-Posts-main//data//dataset.csv")
+dataset = pd.read_csv(
+    "D://a_github项目//ASSORT-Automatic-Summarization-of-Stack-Overflow-Posts-main//data//dataset.csv")
 # bertoverflow的向量
 old_boverflow_embeddings = get_representation(dataset, boverflow_tokenizer, boverflow_model)
-
-
 
 # Train conceptual sentence classifier
 print("training  sentence classifier")
 from sklearn.model_selection import train_test_split
-
 
 # old_sentence 文件缺失，只是每一个句子的真伪值无法判断
 # 更改 train_nn,以支持在gpu上运行
 X_train, X_test, y_train_conceptual, y_test_conceptual = train_test_split(
     old_boverflow_embeddings,
     list(dataset.truth), test_size=0.2, random_state=42)
-#train_nn(X_train, y_train_conceptual, X_test, y_test_conceptual, "overall", lr=1e-5, epoch=500)
-train_nn(X_train, y_train_conceptual, X_test, y_test_conceptual, "overall", lr=1e-5, epoch=800)
-
+# train_nn(X_train, y_train_conceptual, X_test, y_test_conceptual, "overall", lr=1e-5, epoch=500)
+bert_fintuned.train_nn(X_train, y_train_conceptual, X_test, y_test_conceptual, "overall", lr=1e-5, epoch=1000)
 
 # Constructing test_set
 test_set = np.concatenate((y_train_conceptual, y_train_howto, y_train_debug), axis=0)
