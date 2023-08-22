@@ -1,4 +1,5 @@
 import pandas as pd
+import datasets
 from transformers import AutoModel, AutoTokenizer
 import pickle
 import os
@@ -86,9 +87,14 @@ class ModifiedBert(nn.Module):
         self.fc3 = nn.Linear(15, 2)
 
     def forward(self, x):
-        bert_output = self.bert(x[0:768])
+        encoded_input=list()
+        explicit_feature=list()
+        for i in x:
+            encoded_input.append(i['encoded_input'])
+            explicit_feature.append(i['explicit_feature'])
+        bert_output = self.bert(x[:,encoded_input])
         pooled_output = bert_output['pooler_output'].cpu().detach().numpy()
-        hidden_shape = np.concatenate((pooled_output, x[768:]), axis=1)
+        hidden_shape = np.concatenate((pooled_output, x[:,768:]), axis=1)
         return self.fc3(F.relu(self.fc2(F.relu(self.fc1(hidden_shape)))))
 
 
@@ -96,7 +102,7 @@ def train_nn(trainSet, trainTruth, testSet, testTruth, qtype, lr, epoch):
     learning_rate = lr
     epochs = epoch
     batch_size = 256
-    model_name = "nn_old_approach_50_" + qtype + "_best.pt"
+    model_name = "8.22.nn_old_approach_50_" + qtype + "_best.pt"
 
     # 更改
     trainSet = torch.from_numpy(trainSet).double().cuda()
@@ -166,3 +172,13 @@ def train_nn(trainSet, trainTruth, testSet, testTruth, qtype, lr, epoch):
 
     print("Model stored to: {}".format(model_name))
     torch.save(net.state_dict(), model_name)
+
+
+'''
+if __name__ == '__main__':
+
+    model = ModifiedBert(size=796,bert=bert_model)
+    para = torch.load("D://a_github项目//ASSORT-2//ASSORT-Automatic-Summarization-of-Stack-Overflow-Posts-main//model//nn_old_approach_50_overall_best.pt")
+    model = model.load_state_dict(para)
+
+'''
